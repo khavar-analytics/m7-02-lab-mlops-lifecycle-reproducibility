@@ -1,0 +1,44 @@
+registry:
+  name: northstar-models
+  stages:
+    - name: staging
+      promoted_from: successful_training_run
+      promotion_rule: automatic
+      gates:
+        - "global_mae_seconds <= 120"
+        - "onnx_compilation_success = true"
+        - "validation_mae <= 1.05 * current_production_mae"
+    - name: production
+      promoted_from: staging
+      promotion_rule: manual
+      gates:
+        - "p95_latency_ms <= 150 @ 200_rps"
+        - "zone_mae <= 180 (bottom_5_zones)"
+        - "shadow_error_rate <= 0.001 over 48h"
+      approvers:
+        - "Lead Machine Learning Engineer"
+        - "Chief Technology Officer (CTO)"
+    - name: archived
+      promoted_from: production
+      trigger:
+        - "new_model_promoted"
+        - "manual_deprecation"
+
+models:
+  - name: eta
+    owner: "ETA Optimization Team"
+    sla_p95_ms: 150
+    retention_versions: 10
+  - name: dispatcher-routing
+    owner: "Core Dispatch & Routing Team"
+    sla_p95_ms: 80
+    retention_versions: 10
+
+lineage:
+  required_fields:
+    - git_sha          # Exact 40-character commit hash of the training pipeline code
+    - dataset_hash     # SHA-256 fingerprint of the immutable training data snapshot
+    - feature_version  # Track versioned feature engineering pipeline / state transformations
+    - mlflow_run_id    # Unique tracking ID mapping to logged hyperparameter metrics
+    - training_user    # Identity string of the engineer or automated CI/CD system runner
+    - base_image_tag   # Explicit Docker base image version tag defining the execution environment
